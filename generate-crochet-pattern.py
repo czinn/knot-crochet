@@ -138,6 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('--gauge', '-g', type=float, help='Ratio of single crochet width over height', default=1.25)
     parser.add_argument('--stitches', '-s', help='Optional filename for raw stitch output')
     parser.add_argument('--meridian-fix', '-m', action='store_true', help='Swap meridian and longitude from default assignment')
+    parser.add_argument('--flip', '-f', action='store_true', help='Flip the order in which the longitudes are traversed')
     parser.add_argument('--randomize-starts', action='store_true', help='Randomize where each row starts')
     parser.add_argument('--spiral', action='store_true', help='Make a spiral pattern instead of separate rows')
 
@@ -148,6 +149,8 @@ if __name__ == '__main__':
 
     if args.meridian_fix:
         points = list(map(list, zip(*points)))
+    if args.flip:
+        points = list(points[::-1])
 
     meridian_length = 0
     for i in range(len(points)):
