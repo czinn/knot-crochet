@@ -5,6 +5,7 @@ import json
 import math
 import random
 import itertools
+import unittest
 
 def dist(a, b):
     return sum((a - b)**2 for a, b in zip(a, b))**0.5
@@ -42,6 +43,7 @@ def shift_by(points, longitude_shift, shift_amount, grid_pos):
             break
     return (grid_pos, pos)
 
+# deprecated
 def make_stitches(points, rows, stitch_width, tilt=0, randomize_starts=False):
     longitude_shift = len(points) / len(points[0]) * tilt
 
@@ -128,6 +130,114 @@ def circular_context(l, i, c):
     else:
         return itertools.chain(enumerate(l[start:end], start=start))
 
+def shortest_gap_between_same_stitch(shape_chain):
+    shortest_gap = len(shape_chain)
+    gap = 0
+    last_special = None
+    for i, s in enumerate(shape_chain):
+        if s == 'n':
+            gap += 1
+        else:
+            if s == last_special:
+                shortest_gap = min(gap, shortest_gap)
+            last_special = s
+            gap = 0
+    start_gap = next(i for i, s in enumerate(shape_chain) if s != 'n')
+    if start_gap == last_special:
+        shortest_gap = min(start_gap + gap, shortest_gap)
+
+    return shortest_gap
+
+"""
+`shape_chain` is a list of stitches, notated as 'n' for normal, 'i' for increase, and 'd' for decrease, and viewed as a loop that is joined at the ends. `simplify(shape_chain)` combines nearby increase/decrease pairs such that there are at least `min_gap` normal stitches between each increase or decrease.
+"""
+def simplify(shape_chain, min_gap=3):
+    if all(s == 'n' for s in shape_chain):
+        return shape_chain
+
+    # find an existing gap of at least `min_gap`, and rotate the string so it's at the start
+    gap_size = 0
+    gap_start = 0
+    for i, s in enumerate(shape_chain):
+        if s == 'n':
+            gap_size += 1
+            if gap_size >= min_gap:
+                break
+        else:
+            gap_size = 0
+            gap_start = i + 1
+    if gap_size < min_gap:
+        # look for a gap that wraps around the start and end of the string
+        start_gap = next(i for i, s in enumerate(shape_chain) if s != 'n')
+        end_gap = next(i for i, s in enumerate(reversed(shape_chain)) if s != 'n')
+        if start_gap + end_gap >= min_gap:
+            gap_start = len(shape_chain) - end_gap
+            gap_size = start_gap + end_gap
+    if gap_size < min_gap:
+        # can't work without a gap of the right size
+        return shape_chain
+
+    rotated_chain = shape_chain[gap_start:] + shape_chain[:gap_start]
+
+    i = 0
+    while i < len(rotated_chain):
+        # advance to the next special stitch
+        i = next((i for i in range(i, len(rotated_chain)) if rotated_chain[i] != 'n'), len(rotated_chain))
+        if i == len(rotated_chain):
+            break
+
+        gap = 0
+        end = len(rotated_chain)
+        last_special = rotated_chain[i]
+        num_special = 1
+        for j in range(i + 1, len(rotated_chain)):
+            if rotated_chain[j] == 'n':
+                gap += 1
+                if gap >= min_gap:
+                    end = j + 1
+                    break
+            else:
+                if rotated_chain[j] == last_special:
+                    end = j
+                    break
+                else:
+                    last_special = rotated_chain[j]
+                    num_special += 1
+                gap = 0
+        end = end - gap
+        original_start = rotated_chain[i]
+        for j in range(i, end):
+            rotated_chain[j] = 'n'
+        if num_special % 2 == 1:
+            rotated_chain[(end - 1 - i) // 2 + i] = original_start
+
+        i = end
+
+    pivot = len(rotated_chain) - gap_start
+    return rotated_chain[pivot:] + rotated_chain[:pivot]
+
+class SimplifyTest(unittest.TestCase):
+    def check_simplify(self, shape_chain, expected, min_gap=3):
+        self.assertEqual(''.join(simplify(list(shape_chain), min_gap=3)), expected)
+
+    def test_basic(self):
+        self.check_simplify('nnnindnnn', 'nnnnnnnnn')
+
+    def test_triple(self):
+        self.check_simplify('nnnindninnn', 'nnnnninnnnn')
+
+    def test_even_length(self):
+        self.check_simplify('nnnindinn', 'nnnninnnn')
+
+    def test_multiple(self):
+        self.check_simplify('nnnindninnnidnn', 'nnnnninnnnnnnnn')
+
+    def test_repeat(self):
+        self.check_simplify('nnnininnn', 'nnnininnn')
+
+    def test_repeat_complex(self):
+        self.check_simplify('nnnidndnnn', 'nnnnnndnnn')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
             prog='Knot Crochet Pattern Generator',
@@ -140,7 +250,6 @@ if __name__ == '__main__':
     parser.add_argument('--meridian-fix', '-m', action='store_true', help='Swap meridian and longitude from default assignment')
     parser.add_argument('--flip', '-f', action='store_true', help='Flip the order in which the longitudes are traversed')
     parser.add_argument('--randomize-starts', action='store_true', help='Randomize where each row starts')
-    parser.add_argument('--spiral', action='store_true', help='Make a spiral pattern instead of separate rows')
 
     args = parser.parse_args()
 
@@ -161,10 +270,7 @@ if __name__ == '__main__':
     row_size = meridian_length / args.rows
     stitch_width = row_size * args.gauge
 
-    if not args.spiral:
-        stitches = make_stitches(points, args.rows, stitch_width, args.tilt, args.randomize_starts)
-    else:
-        stitches = make_spiral_stitches(points, args.rows, stitch_width, args.tilt)
+    stitches = make_spiral_stitches(points, args.rows, stitch_width, args.tilt)
 
     if args.stitches is not None:
         with open(args.stitches, 'w') as f:
@@ -181,13 +287,13 @@ if __name__ == '__main__':
         for j, stitch in enumerate(row):
             prev_stitch = row[j - 1] if j > 0 else stitches[i - 1][-1] if i > 0 else stitches[-1][-1]
             next_stitch = row[j + 1] if j < len(row) - 1 else stitches[i + 1][0] if i < len(stitches) - 1 else stitches[0][0]
-            stitch_for_prev = interpolate(stitch, next_stitch, 0.5) if args.spiral else stitch
-            stitch_for_next = interpolate(stitch, prev_stitch, 0.5) if args.spiral else stitch
+            stitch_for_prev = interpolate(stitch, next_stitch, 0.5)
+            stitch_for_next = interpolate(stitch, prev_stitch, 0.5)
             prev_iter = circular_context(stitches[prev_row], last_in_prev, 5) # enumerate(stitches[prev_row])
-            if args.spiral and j == len(row) - 1:
+            if j == len(row) - 1:
                 prev_iter = itertools.chain(prev_iter, [(-1, row[0])])
             next_iter = circular_context(stitches[next_row], last_in_next, 5) # enumerate(stitches[next_row])
-            if args.spiral and j == 0:
+            if j == 0:
                 next_iter = itertools.chain(next_iter, [(-1, row[-1])])
             closest_in_prev_row = min((dist(stitch_for_prev, other), k) for k, other in prev_iter)[1]
             closest_in_next_row = min((dist(stitch_for_next, other), k) for k, other in next_iter)[1]
@@ -199,17 +305,11 @@ if __name__ == '__main__':
             else:
                 connected_stitches[i][-1].add(-1)
 
-    print('total stitches: {}'.format(sum(len(row) for row in stitches)))
-    print()
-    print('chain {}'.format(len(stitches[-1])))
-    any_last_in_first = False
+    stitches_shape = []
     for i, row in enumerate(stitches):
-        # print(connected_stitches[i])
+        row_shape = []
         prev_row = (i - 1) % len(stitches)
         next_row = (i + 1) % len(stitches)
-        normals = 0
-        row_instructions = []
-        net_increases = 0
         for j, stitch in enumerate(row):
             decreases = len(connected_stitches[i][j]) - 1
             is_decrease = decreases > 0
@@ -217,32 +317,71 @@ if __name__ == '__main__':
             if j == 0 and -1 in connected_stitches[prev_row][-1] and 0 in connected_stitches[i][j]:
                 increases += 1
             is_increase = increases > 0
-            net_increases += increases - decreases
-            # assert(not (is_decrease and is_increase))
-            if is_increase or is_decrease:
+            if is_increase and is_decrease:
+                if increases == 1 and decreases == 1:
+                    row_shape.append('n')
+                elif increases - decreases == 1:
+                    row_shape.append('i')
+                elif decreases - increases == 1:
+                    row_shape.append('d')
+                else:
+                    print('Unexpected increase-decrease combo: {} increases, {} decreases'.format(increases, decreases))
+            elif is_increase:
+                if increases == 1:
+                    row_shape.append('i')
+                else:
+                    print('Unexpected multiple-increase ({})'.format(increases))
+            elif is_decrease:
+                if decreases == 1:
+                    row_shape.append('d')
+                else:
+                    print('Unexpected multiple-decrease ({})'.format(decreases))
+            else:
+                row_shape.append('n')
+        stitches_shape.append(row_shape)
+
+    all_stitches = list(itertools.chain.from_iterable(stitches_shape))
+    gap_scale = shortest_gap_between_same_stitch(all_stitches)
+    all_stitches = simplify(all_stitches, min_gap=min(gap_scale, 5))
+    all_stitches_iter = iter(all_stitches)
+    stitches_shape = [[next(all_stitches_iter) for _ in row] for row in stitches_shape]
+
+    if args.stitches is not None:
+        with open(args.stitches, 'w') as f:
+            output = [[{'s': s, 't': t} for s, t in zip(*x)] for x in zip(stitches, stitches_shape)]
+            f.write(json.dumps(output))
+
+    print('total stitches: {}'.format(sum(len(row) for row in stitches)))
+    print()
+    print('chain {}'.format(len(stitches[-1])))
+
+    any_last_in_first = False
+    for i, row in enumerate(stitches_shape):
+        row_instructions = []
+        normals = 0
+        net_increases = 0
+
+        for stitch in row:
+            if stitch != 'n':
                 if normals > 0:
                     row_instructions.append(str(normals))
                     normals = 0
-            if is_increase and is_decrease:
-                if increases == 1 and decreases == 1:
-                    normals += 1 # basically the same
-                else:
-                    row_instructions.append('id({}, {})'.format(increases, decreases))
-            elif is_increase:
-                if increases == 1:
-                    row_instructions.append('inc')
-                else:
-                    row_instructions.append('inc{}'.format(increases))
-            elif is_decrease:
-                if decreases == 1:
-                    row_instructions.append('dec')
-                else:
-                    row_instructions.append('dec{}'.format(decreases))
-            else:
+
+            if stitch == 'i':
+                row_instructions.append('inc')
+                net_increases += 1
+            elif stitch == 'd':
+                row_instructions.append('dec')
+                net_increases -= 1
+            elif stitch == 'n':
                 normals += 1
+            else:
+                print('Unexpected stitch: {}'.format(stitch))
         if normals > 0:
             row_instructions.append(str(normals))
             normals = 0
+
+        prev_row = (i - 1) % len(stitches)
         last_in_first = False
         if -1 in connected_stitches[i][-1]:
             last_in_first = True # last stitch goes into first stitch in same row
