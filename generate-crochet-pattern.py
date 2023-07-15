@@ -6,6 +6,8 @@ import math
 import random
 import itertools
 import unittest
+import colorama
+from llist import dllist
 
 def dist(a, b):
     return sum((a - b)**2 for a, b in zip(a, b))**0.5
@@ -238,6 +240,96 @@ class SimplifyTest(unittest.TestCase):
     def test_repeat_complex(self):
         self.check_simplify('nnnidndnnn', 'nnnnnndnnn')
 
+def render_pattern(stitches_shape, last_in_first):
+    stitches_shape.append(stitches_shape[0])
+    last_in_first.append(last_in_first[0])
+    columns = dllist()
+    nodes = []
+
+    def get_row_nodes(row, prev_row, start=0):
+        row_nodes = []
+        prev_row_index = start
+        for s in row:
+            prev_row_node = prev_row[prev_row_index] if prev_row_index < len(prev_row) else None
+            if prev_row_node is None:
+                prev_row_node = columns.append(None)
+            if s == 'n':
+                row_nodes.append(prev_row_node)
+                prev_row_index += 1
+            elif s == 'i':
+                if prev_row_index == 0:
+                    row_nodes.append(columns.appendleft(None))
+                elif prev_row_index - 1 >= len(prev_row):
+                    row_nodes.append(columns.append(None))
+                else:
+                    prev_row_node = prev_row[prev_row_index - 1]
+                    if prev_row_node.next is not None and prev_row_node.next not in nodes[-1]:
+                        row_nodes.append(prev_row_node.next)
+                    else:
+                        row_nodes.append(columns.insertafter(None, prev_row_node))
+            elif s == 'd':
+                row_nodes.append(prev_row_node)
+                prev_row_index += 2
+        return row_nodes
+
+    wrapped_rows = []
+    num_to_carry = 0
+    carry_stitches = []
+    carrying_decrease = False
+    carry_counts = []
+    for i, row in enumerate(stitches_shape):
+        if last_in_first[i]:
+            num_to_carry += 1
+        carry_counts.append(len(carry_stitches))
+        row, carry_stitches = carry_stitches + row, []
+        num_carried = 0
+        next_carrying_decrease = False
+        while num_carried < num_to_carry:
+            s = row.pop()
+            if s == 'n':
+                num_carried += 1
+            elif s == 'd':
+                num_carried += 2
+                if num_carried > num_to_carry:
+                    row.append(s)
+                    next_carrying_decrease = True
+                    break
+            carry_stitches.append(s)
+        carry_stitches.reverse()
+        num_to_carry = len(carry_stitches)
+        wrapped_rows.append(row[:])
+        nodes.append(get_row_nodes(row, nodes[-1] if len(nodes) > 0 else [], start=1 if carrying_decrease else 0))
+        carrying_decrease = next_carrying_decrease
+
+    node = columns.first
+    for i in range(len(columns)):
+        node.value = i
+        node = node.next
+
+    for i, (row, row_nodes) in enumerate(zip(wrapped_rows, nodes)):
+        row_str = ''
+        stitches_in_row_so_far = 0
+        for j, (s, n) in enumerate(zip(row, row_nodes)):
+            if n.value > stitches_in_row_so_far:
+                row_str += ' ' * (n.value - stitches_in_row_so_far)
+                stitches_in_row_so_far = n.value
+            stitch_str = s if s != 'n' else ','
+            reset_style = False
+            if s == 'i':
+                stitch_str = colorama.Fore.GREEN + stitch_str
+                reset_style = True
+            if s == 'd':
+                stitch_str = colorama.Fore.RED + stitch_str
+                reset_style = True
+            if carry_counts[i] == j:
+                stitch_str = colorama.Style.BRIGHT + colorama.Back.CYAN + stitch_str
+                reset_style = True
+            if reset_style:
+                stitch_str += colorama.Style.RESET_ALL
+            row_str += stitch_str
+            stitches_in_row_so_far += 1
+        print(row_str)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
             prog='Knot Crochet Pattern Generator',
@@ -351,6 +443,10 @@ if __name__ == '__main__':
             output = [[{'s': s, 't': t} for s, t in zip(*x)] for x in zip(stitches, stitches_shape)]
             f.write(json.dumps(output))
 
+    last_in_first = [-1 in row[-1] for row in connected_stitches]
+
+    render_pattern(stitches_shape, last_in_first)
+
     print('total stitches: {}'.format(sum(len(row) for row in stitches)))
     print()
     print('chain {}'.format(len(stitches[-1])))
@@ -382,14 +478,13 @@ if __name__ == '__main__':
             normals = 0
 
         prev_row = (i - 1) % len(stitches)
-        last_in_first = False
-        if -1 in connected_stitches[i][-1]:
-            last_in_first = True # last stitch goes into first stitch in same row
+        is_last_in_first = last_in_first[i]
+        if is_last_in_first:
             any_last_in_first = True
             net_increases += 1
         if -1 in connected_stitches[prev_row][-1]:
             net_increases -= 1
-        print('row {} ({}{}): {}'.format(i + 1, len(row), '*' if last_in_first else '', ', '.join(row_instructions)))
+        print('row {} ({}{}): {}'.format(i + 1, len(row), '*' if is_last_in_first else '', ', '.join(row_instructions)))
         if net_increases != len(row) - len(stitches[prev_row]):
             print(connected_stitches[i])
             print('ERROR: Expected {} increases from previous row but found {}; try more rows'.format(len(row) - len(stitches[prev_row]), net_increases))
