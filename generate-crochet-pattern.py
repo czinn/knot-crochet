@@ -240,6 +240,161 @@ class SimplifyTest(unittest.TestCase):
     def test_repeat_complex(self):
         self.check_simplify('nnnidndnnn', 'nnnnnndnnn')
 
+def reduce_runs(stitches_shape, last_in_first):
+    all_stitches = list(itertools.chain.from_iterable(stitches_shape))
+    original_gap_scale = shortest_gap_between_same_stitch(all_stitches)
+
+    def get_stitch(i):
+        return all_stitches[i % len(all_stitches)]
+
+    stitches_since_last_change = 0
+    def shift_stitch(i, di):
+        nonlocal stitches_since_last_change
+        nonlocal all_stitches
+        i = i % len(all_stitches)
+        ti = (i + di) % len(all_stitches)
+        all_stitches[i], all_stitches[ti] = all_stitches[ti], all_stitches[i]
+        stitches_since_last_change = 0
+
+    def dist_to_next_special(i, di):
+        d = 0
+        while True:
+            i += di
+            d += 1
+            if get_stitch(i) != 'n':
+                return d
+
+    def context(i, n=20):
+        return ''.join(get_stitch(j) for j in range(i - n, i + n))
+
+    prev_row_stitch = 0
+    current_stitch = len(stitches_shape[0]) - (1 if last_in_first[0] else 0)
+
+    def print_context():
+        print(prev_row_stitch % len(all_stitches), current_stitch % len(all_stitches))
+        print(context(prev_row_stitch))
+        print(context(current_stitch))
+
+    # TODO: The shifting is assymetric between increases and decreases. The
+    # following pattern with increases is just the inverse of the pattern with
+    # decreases, but the former is allowed while the latter would be shifted.
+    # I think they should probably both be shifted.
+    #
+    # nnn n nn   nnnnnn
+    # nnn ninn   nnnninn
+    # nnninnnn   nnninnnn
+    #
+    # nnnnnnnn   nnnnnnnn
+    # nnd nnnn   nndnnnn
+    # nnn d nn   nnndnn
+    #
+    # Each increase or decrease forms a triangle, connecting two stitches in
+    # one row with one stitch in another row. What this function should be
+    # trying to do is shift some of the special stitches forward or back such
+    # that there is a gap of at least one stitch between any two stitches which
+    # are in a triangle.
+    while stitches_since_last_change < len(all_stitches) or prev_row_stitch % len(all_stitches) != 0:
+        stitch = get_stitch(current_stitch)
+        if stitch == 'n':
+            current_stitch += 1
+            prev_row_stitch += 1
+            stitches_since_last_change += 1
+        elif stitch == 'i':
+            # increase goes into previous stitch in previous row
+            if get_stitch(prev_row_stitch - 1) != 'n':
+                # we're going to shift last row stitch back and this stitch forward, or vice versa
+                prev_back = dist_to_next_special(prev_row_stitch - 1, -1)
+                prev_forward = dist_to_next_special(prev_row_stitch - 1, 1)
+                cur_back = dist_to_next_special(current_stitch, -1)
+                cur_forward = dist_to_next_special(current_stitch, 1)
+                back_score = 1 / prev_forward + 1 / cur_back
+                forward_score = 1 / prev_back + 1 / cur_forward
+                if forward_score < back_score:
+                    # shift cur forward and last row back
+                    print('shifting this forward and last back')
+                    print_context()
+                    shift_stitch(current_stitch, 1)
+                    shift_stitch(prev_row_stitch - 1, -1)
+                else:
+                    print('shifting this back and last forward')
+                    print_context()
+                    shift_stitch(current_stitch, -1)
+                    shift_stitch(prev_row_stitch - 1, 1)
+                    current_stitch -= 1
+                    prev_row_stitch -= 1
+            elif get_stitch(prev_row_stitch) != 'n':
+                prev_forward = dist_to_next_special(prev_row_stitch, 1)
+                cur_back = dist_to_next_special(current_stitch, -1)
+                if cur_back >= prev_forward:
+                    print('shifting this back')
+                    print_context()
+                    shift_stitch(current_stitch, -1)
+                    current_stitch -= 1
+                    prev_row_stitch -= 1
+                else:
+                    print('shift last forward')
+                    print_context()
+                    shift_stitch(prev_row_stitch, 1)
+            elif get_stitch(prev_row_stitch - 2) != 'n':
+                prev_back = dist_to_next_special(prev_row_stitch - 2, -1)
+                cur_forward = dist_to_next_special(current_stitch, 1)
+                if cur_forward >= prev_back:
+                    print('shifting this forward')
+                    print_context()
+                    shift_stitch(current_stitch, 1)
+                else:
+                    print('shifting last back')
+                    print_context()
+                    shift_stitch(prev_row_stitch - 2, -1)
+            else:
+                current_stitch += 1
+                # don't increase last row stitch since increase goes into previous stitch
+                stitches_since_last_change += 1
+        elif stitch == 'd':
+            if get_stitch(prev_row_stitch) != 'n':
+                print('d: shifting prev back and this forward')
+                print_context()
+                shift_stitch(prev_row_stitch, -1)
+                shift_stitch(current_stitch, 1)
+            elif get_stitch(prev_row_stitch + 1) != 'n':
+                print('d: shifting prev forward and this back')
+                print_context()
+                shift_stitch(prev_row_stitch + 1, 1)
+                shift_stitch(current_stitch, -1)
+                current_stitch -= 1
+                prev_row_stitch -= 1
+            elif get_stitch(prev_row_stitch - 1) != 'n':
+                print('d: shifting this forward')
+                print_context()
+                shift_stitch(current_stitch, 1)
+            elif get_stitch(prev_row_stitch + 2) != 'n':
+                print('d: shifting this back')
+                print_context()
+                shift_stitch(current_stitch, -1)
+                current_stitch -= 1
+                prev_row_stitch -= 1
+            else:
+                current_stitch += 1
+                prev_row_stitch += 2
+                stitches_since_last_change += 1
+    first_row_len = current_stitch % len(all_stitches)
+
+    new_gap_scale = shortest_gap_between_same_stitch(all_stitches)
+    print('min gap changed from {} to {}'.format(original_gap_scale, new_gap_scale))
+
+    all_stitches_iter = iter(all_stitches)
+    stitches_shape = [[next(all_stitches_iter) for _ in row] for row in stitches_shape]
+    return stitches_shape, first_row_len
+
+def recompute_last_in_first(stitches_shape, first_row_len):
+    last_in_first = [len(stitches_shape[0]) - first_row_len]
+    for i in range(1, len(stitches_shape)):
+        implied_prev_row_size = sum(1 if s == 'n' else 2 if s == 'd' else 0 for s in stitches_shape[i])
+        actual_prev_row_size = len(stitches_shape[i - 1]) - last_in_first[i - 1]
+        last_in_first.append(implied_prev_row_size - actual_prev_row_size)
+    print(last_in_first)
+    return last_in_first
+
 def render_pattern(stitches_shape, last_in_first):
     stitches_shape.append(stitches_shape[0])
     last_in_first.append(last_in_first[0])
@@ -438,12 +593,15 @@ if __name__ == '__main__':
     all_stitches_iter = iter(all_stitches)
     stitches_shape = [[next(all_stitches_iter) for _ in row] for row in stitches_shape]
 
+    last_in_first = [-1 in row[-1] for row in connected_stitches]
+
+    #stitches_shape, first_row_len = reduce_runs(stitches_shape, last_in_first)
+    #last_in_first = recompute_last_in_first(stitches_shape, first_row_len)
+
     if args.stitches is not None:
         with open(args.stitches, 'w') as f:
             output = [[{'s': s, 't': t} for s, t in zip(*x)] for x in zip(stitches, stitches_shape)]
             f.write(json.dumps(output))
-
-    last_in_first = [-1 in row[-1] for row in connected_stitches]
 
     render_pattern(stitches_shape, last_in_first)
 
@@ -478,16 +636,14 @@ if __name__ == '__main__':
             normals = 0
 
         prev_row = (i - 1) % len(stitches)
-        is_last_in_first = last_in_first[i]
+        last_row_stitches = len(stitches[prev_row]) - last_in_first[prev_row]
+        is_last_in_first = last_in_first[i] != 0
         if is_last_in_first:
             any_last_in_first = True
-            net_increases += 1
-        if -1 in connected_stitches[prev_row][-1]:
-            net_increases -= 1
         print('row {} ({}{}): {}'.format(i + 1, len(row), '*' if is_last_in_first else '', ', '.join(row_instructions)))
-        if net_increases != len(row) - len(stitches[prev_row]):
+        if net_increases != len(row) - last_in_first[i] - last_row_stitches:
             print(connected_stitches[i])
-            print('ERROR: Expected {} increases from previous row but found {}; try more rows'.format(len(row) - len(stitches[prev_row]), net_increases))
+            print('ERROR: Expected {} increases from previous row but found {}; try more rows'.format(len(row) - last_in_first[i] - last_row_stitches, net_increases))
     if any_last_in_first:
         print()
         print('* Last stitch into first stitch in same row')
