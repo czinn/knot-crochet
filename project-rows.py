@@ -24,6 +24,7 @@ if __name__ == '__main__':
 
     with open(args.filename, 'r') as f:
         stitches = json.loads(f.read())
+    stitches = [[s['s'] for s in row] for row in stitches]
 
     plane_normal = normalize(np.array(args.normal))
     def point_on_plane(point):

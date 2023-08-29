@@ -392,12 +392,12 @@ def recompute_last_in_first(stitches_shape, first_row_len):
         implied_prev_row_size = sum(1 if s == 'n' else 2 if s == 'd' else 0 for s in stitches_shape[i])
         actual_prev_row_size = len(stitches_shape[i - 1]) - last_in_first[i - 1]
         last_in_first.append(implied_prev_row_size - actual_prev_row_size)
-    print(last_in_first)
     return last_in_first
 
 def render_pattern(stitches_shape, last_in_first):
     stitches_shape = [r[:] for r in stitches_shape]
     stitches_shape.append(stitches_shape[0])
+    last_in_first = last_in_first[:]
     last_in_first.append(last_in_first[0])
     columns = dllist()
     nodes = []
@@ -499,6 +499,8 @@ if __name__ == '__main__':
     parser.add_argument('--meridian-fix', '-m', action='store_true', help='Swap meridian and longitude from default assignment')
     parser.add_argument('--flip', '-f', action='store_true', help='Flip the order in which the longitudes are traversed')
     parser.add_argument('--randomize-starts', action='store_true', help='Randomize where each row starts')
+    parser.add_argument('--last-in-first-fix', type=int, help='Manually specify length of first row to fix last-in-first issues')
+    parser.add_argument('--move-start', type=int, help='Shift starting point forward by some amount')
 
     args = parser.parse_args()
 
@@ -509,6 +511,8 @@ if __name__ == '__main__':
         points = list(map(list, zip(*points)))
     if args.flip:
         points = list(points[::-1])
+    if args.move_start:
+        points = [row[args.move_start:] + row[:args.move_start] for row in points]
 
     meridian_length = 0
     for i in range(len(points)):
@@ -598,7 +602,8 @@ if __name__ == '__main__':
     last_in_first = [-1 in row[-1] for row in connected_stitches]
 
     #stitches_shape, first_row_len = reduce_runs(stitches_shape, last_in_first)
-    #last_in_first = recompute_last_in_first(stitches_shape, first_row_len)
+    if args.last_in_first_fix:
+        last_in_first = recompute_last_in_first(stitches_shape, args.last_in_first_fix)
 
     if args.stitches is not None:
         with open(args.stitches, 'w') as f:
