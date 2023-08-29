@@ -396,6 +396,7 @@ def recompute_last_in_first(stitches_shape, first_row_len):
     return last_in_first
 
 def render_pattern(stitches_shape, last_in_first):
+    stitches_shape = [r[:] for r in stitches_shape]
     stitches_shape.append(stitches_shape[0])
     last_in_first.append(last_in_first[0])
     columns = dllist()
@@ -493,6 +494,7 @@ if __name__ == '__main__':
     parser.add_argument('--tilt', '-t', type=int, help='Number of times longitude should wrap clockwise around the torus relative to the mesh longitude', default=0)
     parser.add_argument('--rows', '-r', type=int, help='Number of rows, i.e. the circumference of the torus', default=24)
     parser.add_argument('--gauge', '-g', type=float, help='Ratio of single crochet width over height', default=1.25)
+    parser.add_argument('--slant', type=float, help='Fraction of stitch that each stitch is behind the stitch it goes into in the previous row', default=0.25)
     parser.add_argument('--stitches', '-s', help='Optional filename for raw stitch output')
     parser.add_argument('--meridian-fix', '-m', action='store_true', help='Swap meridian and longitude from default assignment')
     parser.add_argument('--flip', '-f', action='store_true', help='Flip the order in which the longitudes are traversed')
@@ -534,8 +536,8 @@ if __name__ == '__main__':
         for j, stitch in enumerate(row):
             prev_stitch = row[j - 1] if j > 0 else stitches[i - 1][-1] if i > 0 else stitches[-1][-1]
             next_stitch = row[j + 1] if j < len(row) - 1 else stitches[i + 1][0] if i < len(stitches) - 1 else stitches[0][0]
-            stitch_for_prev = interpolate(stitch, next_stitch, 0.5)
-            stitch_for_next = interpolate(stitch, prev_stitch, 0.5)
+            stitch_for_prev = interpolate(stitch, next_stitch, args.slant)
+            stitch_for_next = interpolate(stitch, prev_stitch, args.slant)
             prev_iter = circular_context(stitches[prev_row], last_in_prev, 5) # enumerate(stitches[prev_row])
             if j == len(row) - 1:
                 prev_iter = itertools.chain(prev_iter, [(-1, row[0])])
