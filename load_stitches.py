@@ -3,7 +3,7 @@ import bmesh
 
 import json
 
-with open(bpy.data.filepath.replace('blend', 'new_stitches.json'), 'r') as f:
+with open(bpy.data.filepath.replace('blend', 'stitches.json'), 'r') as f:
     stitches = json.loads(f.read())
 
 def make_color_material(name, color):

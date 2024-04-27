@@ -8,6 +8,7 @@ import itertools
 import unittest
 import colorama
 from llist import dllist
+import numpy as np
 
 def dist(a, b):
     return sum((a - b)**2 for a, b in zip(a, b))**0.5
@@ -654,3 +655,24 @@ if __name__ == '__main__':
     if any_last_in_first:
         print()
         print('* Last stitch into first stitch in same row')
+
+    #print()
+    #base_row = 0
+    #opposite_row = base_row + len(points) / 2
+    #longitude_shift = (len(points) * args.tilt) / len(points[0])
+    #for c in range(len(points[0])):
+    #    stitch = get(points, base_row + c * longitude_shift, c)
+    #    opposite_stitch = get(points, opposite_row + c * longitude_shift, c)
+    #    dir_vec = np.array([s - o for s, o in zip(stitch, opposite_stitch)])
+    #    next_stitch = points[base_row][(c + 1) % len(points[base_row])]
+    #    forward_vec = np.array([n - s for n, s in zip(next_stitch, stitch)])
+    #    up_vec = np.array([0, 0, 1])
+
+    #    proj_dir = dir_vec - (np.dot(dir_vec, forward_vec) / np.linalg.norm(forward_vec)**2) * forward_vec
+    #    proj_up = up_vec - (np.dot(up_vec, forward_vec) / np.linalg.norm(forward_vec)**2) * forward_vec
+    #    cos_angle = np.dot(proj_dir, proj_up) / np.linalg.norm(proj_dir) / np.linalg.norm(proj_up)
+    #    angle = np.arccos(cos_angle)
+    #    if np.dot(np.cross(proj_dir, proj_up), forward_vec) < 0:
+    #    #if np.dot(up_vec, proj_dir) < 0:
+    #        angle = math.pi * 2 - angle
+    #    print(angle)

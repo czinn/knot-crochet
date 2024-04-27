@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--rows', '-r', type=int, nargs='+', help='Which rows of stitches to project')
     parser.add_argument('--normal', '-n', type=float, nargs=3, help='Normal vector for the projection plane')
     parser.add_argument('--output', '-o', help='Output SVG file')
+    parser.add_argument('--flip', '-f', action='store_true', help='Flip Z axis of projected points')
 
     args = parser.parse_args()
 
@@ -41,6 +42,8 @@ if __name__ == '__main__':
 
     segments = [(-0.5 * (a[2] + b[2]), a[:2], b[:2], row_index) for row_index, row in enumerate(projected_points) for a, b in zip(row, row[1:] + [row[0]])] # Z, point 1, point 2, row
     segments.sort()
+    if args.flip:
+        segments.reverse()
 
     strokes = ['black', 'red', 'blue']
 
